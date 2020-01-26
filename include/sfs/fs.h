@@ -36,8 +36,25 @@ private:
     };
 
     // TODO: Internal helper functions
+    bool load_inode(size_t inumber, Inode *node);
+    bool save_inode(size_t inumber, Inode *node);
+    bool read_nth_block(size_t inumber, size_t nthblock, Block *block);
 
     // TODO: Internal member variables
+
+    uint32_t offset = 0;
+
+    // free block map
+    unsigned char *fbm;
+
+    // itable size;
+    uint32_t itable_size;
+
+    // inode table
+    unsigned char*itable; 
+
+    // disk pointer;
+    Disk *disk;
 
 public:
     static void debug(Disk *disk);
