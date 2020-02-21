@@ -39,19 +39,26 @@ private:
     bool load_inode(size_t inumber, Inode *node);
     bool save_inode(size_t inumber, Inode *node);
     bool read_nth_block(size_t inumber, size_t nthblock, Block *block);
+    ssize_t allocate_free_block();
+    bool save_nth_block(size_t inumber, size_t nthblock, Block *block);
+    inline void set_fbmap(uint32_t b) {free_bmap[b-offset] = 1;}
 
     // TODO: Internal member variables
 
+    // offset is the number of the non data blocks
     uint32_t offset = 0;
 
+    // free block map size
+    uint32_t freebmap_size;
+
     // free block map
-    unsigned char *fbm;
+    unsigned char *free_bmap;
 
     // itable size;
     uint32_t itable_size;
 
     // inode table
-    unsigned char*itable; 
+    unsigned char *itable; 
 
     // disk pointer;
     Disk *disk;

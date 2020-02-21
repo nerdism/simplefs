@@ -235,6 +235,7 @@ bool copyout(FileSystem &fs, size_t inumber, const char *path) {
     size_t offset = 0;
     while (true) {
     	ssize_t result = fs.read(inumber, buffer, sizeof(buffer), offset);
+
     	if (result <= 0) {
     	    break;
 	}

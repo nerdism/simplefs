@@ -46,7 +46,7 @@ void FileSystem::debug(Disk *disk) {
                 printf("\n");
 
                 if (block.Inodes[j].Indirect != 0) {
-                    printf("    indirect blocks: %d\n", block.Inodes[j].Indirect);
+                    printf("    indirect block: %d\n", block.Inodes[j].Indirect);
                     // indirect block
                     Block indi_block;                
 
@@ -70,15 +70,18 @@ void FileSystem::debug(Disk *disk) {
 // Format file system ----------------------------------------------------------
 
 bool FileSystem::format(Disk *disk) {
+    if (disk->mounted())
+        return false;
     Block block;
 
-    // Write superblock
     int n = disk->size();
+    block.Super.MagicNumber = FileSystem::MAGIC_NUMBER;
     block.Super.Blocks = n;
     block.Super.InodeBlocks = (n%10 == 0? n/10: (n/10)+1);
     block.Super.Inodes = FileSystem::INODES_PER_BLOCK * block.Super.InodeBlocks;
     disk->write(0, block.Data);
 
+    // writing every block with zeros
     for (uint32_t i = 1; i < block.Super.Blocks; i++) {
         char buf[Disk::BLOCK_SIZE];
         memset(buf, 0, Disk::BLOCK_SIZE);
@@ -100,32 +103,45 @@ bool FileSystem::mount(Disk *disk) {
     if (sblock.Super.MagicNumber != FileSystem::MAGIC_NUMBER)
         return false;
 
-    // Set device and mount
+    if (sblock.Super.Blocks != disk->size())
+        return false;
 
-    // Copy metadata
+    uint32_t n = disk->size();
+    uint32_t inode_blocks = (n%10 == 0? n/10: (n/10)+1);
+
+    if (sblock.Super.InodeBlocks != inode_blocks)
+        return false;
+
+    uint32_t inodes  = FileSystem::INODES_PER_BLOCK * sblock.Super.InodeBlocks;
+
+    if (sblock.Super.Inodes != inodes)
+        return false;
+
 
     // Allocate free block bitmap
     offset = sblock.Super.InodeBlocks+1;
-    uint32_t fbm_size = sblock.Super.Blocks-offset;
-    fbm = new unsigned char[fbm_size];
-    memset(fbm, 0, fbm_size);
+    freebmap_size = sblock.Super.Blocks-offset;
+    free_bmap = new unsigned char[freebmap_size];
+    memset(free_bmap, 0, freebmap_size);
 
     // Allocate inode table
     itable_size = sblock.Super.InodeBlocks*INODES_PER_BLOCK;
     itable = new unsigned char[itable_size];
-    memset(fbm, 0, fbm_size);
+    memset(itable, 0, freebmap_size);
 
     Block iblock;
     for (uint32_t i = 1; i <= sblock.Super.InodeBlocks; i++) {
         disk->read(i, iblock.Data);
         for (uint32_t j = 0; j < INODES_PER_BLOCK; j++) {
+
             if (iblock.Inodes[j].Valid) {
                 itable[(i-1)*INODES_PER_BLOCK+j] = 1; 
+
                 // checking 5  direct pointers
                 for (uint32_t k = 0; k < POINTERS_PER_INODE; k++) {
                     uint32_t block_ind = iblock.Inodes[j].Direct[k];
                     if (block_ind != 0) {
-                        fbm[block_ind-offset] = 1; 
+                        free_bmap[block_ind-offset] = 1; 
                     } 
                 }
 
@@ -138,7 +154,7 @@ bool FileSystem::mount(Disk *disk) {
                     for (uint32_t k = 0; k < POINTERS_PER_BLOCK; k++) {
                         uint32_t block_ind = indi_block.Pointers[k];
                         if (block_ind != 0) {
-                            fbm[block_ind-offset] = 1; 
+                            free_bmap[block_ind-offset] = 1; 
                         } 
                     }
                 }
@@ -175,6 +191,7 @@ ssize_t FileSystem::create() {
     node.Valid = 1;
     save_inode(i, &node);
 
+    itable[i] = 1;
     return i;
 }
 
@@ -189,7 +206,7 @@ bool FileSystem::remove(size_t inumber) {
     for(int i=0;i<5;i++) { 
         uint32_t t = node.Direct[i];
         if (t != 0) {
-            fbm[t-offset] = 0; 
+            free_bmap[t-offset] = 0; 
         }
         node.Direct[i] = 0;
     }
@@ -202,17 +219,18 @@ bool FileSystem::remove(size_t inumber) {
         for (uint32_t i = 0; i < POINTERS_PER_BLOCK; i++) {
             uint32_t t = pblock.Pointers[i]; 
             if (t != 0) {
-                fbm[t-offset] = 0;
+                free_bmap[t-offset] = 0;
                 pblock.Pointers[i] = 0;
             }
         }
         
         disk->write(node.Indirect, pblock.Data);
         node.Indirect = 0;
-        fbm[node.Indirect-offset] = 0;
+        printf("...hi...\n");
+        free_bmap[node.Indirect-offset] = 0;
     }
 
-
+    node.Valid = 0;
     // Clear inode in inode table
     save_inode(inumber, &node);
     itable[inumber] = 0;
@@ -222,6 +240,7 @@ bool FileSystem::remove(size_t inumber) {
 // Inode stat ------------------------------------------------------------------
 
 ssize_t FileSystem::stat(size_t inumber) {
+
     // Load inode information
     Inode node;
     load_inode(inumber, &node);
@@ -232,33 +251,135 @@ ssize_t FileSystem::stat(size_t inumber) {
 // Read from inode -------------------------------------------------------------
 
 ssize_t FileSystem::read(size_t inumber, char *data, size_t length, size_t offset) {
-    // Load inode information
+    /* printf("length: %ld, offset: %ld\n", length, offset); */
+    /* printf("itable: %p free_bmap: %p\n", this->itable, this->free_bmap); */
+    /* for (uint32_t i = 0; i < itable_size; i++) { */
+    /*     printf("%d", itable[i]); */ 
+    /* } */
     if (itable[inumber] == 0) return -1;
 
     Inode node;
+    // Load inode information
     load_inode(inumber, &node);
+
+    if (offset > node.Size) return 0;
 
     // the beginning block
     uint32_t begin_block = (offset / Disk::BLOCK_SIZE) + 1;
 
+    // actual length that can be read;
+    uint32_t alength = node.Size - offset;
+
+    if (alength <= 0) return 0;
+
+    /*
+     * meaning: if length was greater than file size
+     *          just make the actual length the 
+     *          the remaining length of the file
+     */ 
+    if (alength >= length) alength = length;
+        
+
     // number of the blocks should be read
     uint32_t num_block_read = ((offset - ((begin_block-1)*Disk::BLOCK_SIZE) +
-                               length) / Disk::BLOCK_SIZE) + 1;
+                               alength) / Disk::BLOCK_SIZE) + 1;
 
     
+    uint32_t bytes_read = 0;
 
+    for (uint32_t i = 0; i < num_block_read; i++) {
+        Block block;
+        if (!read_nth_block(inumber, begin_block+i, &block)) 
+            return -1;
+
+        // inside 
+        /* uint32_t block_offset = i * Disk::BLOCK_SIZE; */
+        uint32_t read_begin = offset % Disk::BLOCK_SIZE;
+        uint32_t read_len;
+
+        if (read_begin + alength < Disk::BLOCK_SIZE) {
+            read_len = read_begin + alength; 
+        }
+        else {
+            read_len = Disk::BLOCK_SIZE - read_begin; 
+        }
+        
+        strncpy(data, &block.Data[read_begin], read_len);
+
+        data += read_len;
+        bytes_read += read_len;
+        alength -= read_len;
+    }
     
     // Read block and copy to data
-    return 0;
+    return bytes_read;
 }
 
 // Write to inode --------------------------------------------------------------
-ssize_t FileSystem::write(size_t inumber, char *data, size_t length, size_t offset) {
+ssize_t FileSystem::write(size_t inumber, char *data, 
+                          size_t length, size_t offset) {
+
+    if (itable[inumber] == 0) return -1;
 
     // Load inode
-    
-    // Write block and copy to data
-    return 0;
+    Inode node;
+    // Load inode information
+    load_inode(inumber, &node);
+
+    if (offset > node.Size) return 0;
+
+    // The beginning block
+    uint32_t begin_block = (offset / Disk::BLOCK_SIZE) + 1;   
+
+    // number of the blocks should be read
+    uint32_t num_block_write = ((offset - ((begin_block-1)*Disk::BLOCK_SIZE) +
+                               length) / Disk::BLOCK_SIZE) + 1;
+
+    uint32_t write_bytes = 0;
+    for (uint32_t i = 0; i < num_block_write; i++) {
+        Block block;
+        uint32_t current_block = begin_block+i;
+
+        if (!read_nth_block(inumber, current_block, &block)) {
+
+            uint32_t fb = allocate_free_block(); 
+            if (current_block <= 5) {
+                node.Direct[current_block-1] = fb;
+            }
+            else {
+                uint32_t indirect_fb = allocate_free_block();
+                node.Indirect = indirect_fb;
+                Block indi_block;
+                disk->read(indirect_fb, indi_block.Data);
+                
+                for (uint32_t m = 0; m < POINTERS_PER_BLOCK; m++) {
+                    if (current_block == m+6) {
+                        indi_block.Pointers[m] = fb;
+                        break;
+                    }
+                } 
+                disk->write(indirect_fb, indi_block.Data);
+            }
+            save_inode(inumber, &node);
+        }
+        uint32_t write_begin  = offset % Disk::BLOCK_SIZE;
+        uint32_t write_length = Disk::BLOCK_SIZE - write_begin;
+
+        /* strncpy(&block.Data[write_begin], data, write_length); */
+        uint32_t count_bytes = 0;
+        while (data[count_bytes] != '\0' || count_bytes == write_length) {
+            block.Data[write_begin++] = data[count_bytes++]; 
+        }
+
+        data += count_bytes; 
+        write_bytes += count_bytes;
+
+        
+        save_nth_block(inumber, current_block, &block);
+    }
+    node.Size += write_bytes;
+    save_inode(inumber, &node);
+    return write_bytes;
 }
 
 bool FileSystem::load_inode(size_t inumber, Inode *node) {
@@ -266,7 +387,7 @@ bool FileSystem::load_inode(size_t inumber, Inode *node) {
     uint32_t block_ind = inumber / INODES_PER_BLOCK; 
     Block iblock;
 
-    disk->read(block_ind, iblock.Data);
+    disk->read(block_ind+1, iblock.Data);
 
 
     *node = iblock.Inodes[inumber];
@@ -280,26 +401,69 @@ bool FileSystem::save_inode(size_t inumber, Inode *node) {
     
     uint32_t block_ind = inumber / INODES_PER_BLOCK; 
     Block iblock;
-    
+    disk->read(block_ind+1, iblock.Data); 
     iblock.Inodes[inumber] = *node;
 
-    disk->write(block_ind, iblock.Data);
+    disk->write(block_ind+1, iblock.Data);
 
     return true;
 }
 
 
 bool FileSystem::read_nth_block(size_t inumber, size_t nthblock, Block *block) {
-    
     Inode node;
     load_inode(inumber, &node);
 
-    if (inumber <= 5) {
-        
+    if (nthblock <= 5) {
+        uint32_t t = node.Direct[nthblock-1]; 
+        if (t == 0) return false;
+        disk->read(t, block->Data);
+        return true;
     }
     else {
-    
+        uint32_t t = node.Indirect;
+        if (t == 0) return false;
+        Block dblock;
+        
+        disk->read(t, dblock.Data);
+        for (uint32_t i = 0; i < POINTERS_PER_BLOCK; i++) {
+            t = dblock.Pointers[i]; 
+            if (t == 0) return false;
+            if (i == nthblock-6) {
+                disk->read(t, block->Data);    
+                break;
+            }
+        }        
+
     }
+    return true;
 }
 
+ssize_t FileSystem::allocate_free_block() {
+    for (uint32_t i = 0; i < freebmap_size; i++) {
+        if (free_bmap[i] == 0) {
+            free_bmap[i] = 1;
+            return (i+offset); 
+        }
+    }
+    return -1;
+}
+
+bool FileSystem::save_nth_block(size_t inumber, 
+                                size_t nthblock, Block *block) {
+
+    Inode node;
+    load_inode(inumber, &node);
+
+    if (nthblock <= 5) {
+        uint32_t t = node.Direct[nthblock-1]; 
+        if (t == 0) return false;
+        disk->write(t, block->Data);
+        return true;
+    }
+    else {
+        
+    }
+    return true;
+}
 
