@@ -15,8 +15,6 @@ disk mounted.
 inode 1 has size 965 bytes.
 stat failed!
 stat failed!
-5 disk block reads
-0 disk block writes
 EOF
 }
 
@@ -35,8 +33,6 @@ disk mounted.
 stat failed!
 inode 2 has size 27160 bytes.
 inode 3 has size 9546 bytes.
-7 disk block reads
-0 disk block writes
 EOF
 }
 
@@ -57,8 +53,6 @@ inode 1 has size 1523 bytes.
 inode 2 has size 105421 bytes.
 stat failed!
 inode 9 has size 409305 bytes.
-27 disk block reads
-0 disk block writes
 EOF
 }
 

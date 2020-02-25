@@ -11,8 +11,6 @@ EOF
 mount-output() {
     cat <<EOF
 disk mounted.
-2 disk block reads
-0 disk block writes
 EOF
 }
 
@@ -27,8 +25,6 @@ mount-mount-output() {
     cat <<EOF
 disk mounted.
 mount failed!
-2 disk block reads
-0 disk block writes
 EOF
 }
 
@@ -43,8 +39,6 @@ mount-format-output() {
     cat <<EOF
 disk mounted.
 format failed!
-2 disk block reads
-0 disk block writes
 EOF
 }
 
@@ -77,8 +71,6 @@ EOF
 bad-mount-output() {
     cat <<EOF
 mount failed!
-1 disk block reads
-0 disk block writes
 EOF
 }
 

@@ -264,6 +264,7 @@ bool copyin(FileSystem &fs, const char *path, size_t inumber) {
 	}
 
 	ssize_t actual = fs.write(inumber, buffer, result, offset);
+        printf("here mohsen\n");
 	if (actual < 0) {
 	    fprintf(stderr, "fs.write returned invalid result %ld\n", actual);
 	    break;

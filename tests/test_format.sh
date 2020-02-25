@@ -8,8 +8,6 @@ SuperBlock:
     5 blocks
     1 inode blocks
     128 inodes
-2 disk block reads
-5 disk block writes
 EOF
 }
 
@@ -21,8 +19,6 @@ SuperBlock:
     20 blocks
     2 inode blocks
     256 inodes
-3 disk block reads
-20 disk block writes
 EOF
 }
 
@@ -34,8 +30,6 @@ SuperBlock:
     200 blocks
     20 inode blocks
     2560 inodes
-21 disk block reads
-200 disk block writes
 EOF
 }
 

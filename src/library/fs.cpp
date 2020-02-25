@@ -8,6 +8,10 @@
 #include <stdio.h>
 #include <string.h>
 
+
+/* number of the block right after direct blocks */
+#define INDIRECT_OFFSET 6
+
 // Debug file system -----------------------------------------------------------
 
 void FileSystem::debug(Disk *disk) {
@@ -198,9 +202,13 @@ ssize_t FileSystem::create() {
 // Remove inode ----------------------------------------------------------------
 
 bool FileSystem::remove(size_t inumber) {
+    if (!disk->mounted())
+        return false;
     // Load inode information
     Inode node;
     load_inode(inumber, &node);
+    if (!node.Valid)
+        return false;
 
     // Free direct blocks
     for(int i=0;i<5;i++) { 
@@ -225,9 +233,10 @@ bool FileSystem::remove(size_t inumber) {
         }
         
         disk->write(node.Indirect, pblock.Data);
+
+        // free_bmap[node.Indirect-offset] = 0;
+        unset_fbmap(node.Indirect);
         node.Indirect = 0;
-        printf("...hi...\n");
-        free_bmap[node.Indirect-offset] = 0;
     }
 
     node.Valid = 0;
@@ -244,6 +253,8 @@ ssize_t FileSystem::stat(size_t inumber) {
     // Load inode information
     Inode node;
     load_inode(inumber, &node);
+    if (!node.Valid)
+        return -1;
     
     return node.Size;
 }
@@ -319,12 +330,14 @@ ssize_t FileSystem::read(size_t inumber, char *data, size_t length, size_t offse
 ssize_t FileSystem::write(size_t inumber, char *data, 
                           size_t length, size_t offset) {
 
+    printf("bp 1\n");
     if (itable[inumber] == 0) return -1;
 
     // Load inode
     Inode node;
     // Load inode information
     load_inode(inumber, &node);
+    printf("bp 2\n");
 
     if (offset > node.Size) return 0;
 
@@ -336,49 +349,86 @@ ssize_t FileSystem::write(size_t inumber, char *data,
                                length) / Disk::BLOCK_SIZE) + 1;
 
     uint32_t write_bytes = 0;
+    printf("bp 3\n");
+    printf("number of block to write: %d\n", num_block_write);
     for (uint32_t i = 0; i < num_block_write; i++) {
         Block block;
         uint32_t current_block = begin_block+i;
 
+        printf("bp 4\n");
+        printf("current block: %d\n", current_block);
+
+        /*
+         * if nth block of inode is not set 
+         * then allocate new free block to inode 
+         */
         if (!read_nth_block(inumber, current_block, &block)) {
 
+            printf("bp 5\n");
             uint32_t fb = allocate_free_block(); 
             if (current_block <= 5) {
                 node.Direct[current_block-1] = fb;
+                printf("bp 5.1\n");
+                save_inode(inumber, &node);
             }
             else {
-                uint32_t indirect_fb = allocate_free_block();
-                node.Indirect = indirect_fb;
+                if (node.Indirect == 0) {
+                    uint32_t indirect_fb = allocate_free_block();
+                    node.Indirect = indirect_fb;
+                    save_inode(inumber, &node);
+                }
                 Block indi_block;
-                disk->read(indirect_fb, indi_block.Data);
+
+                disk->read(node.Indirect, indi_block.Data);
+
+                printf("bp 5.2\n");
                 
-                for (uint32_t m = 0; m < POINTERS_PER_BLOCK; m++) {
-                    if (current_block == m+6) {
-                        indi_block.Pointers[m] = fb;
-                        break;
-                    }
-                } 
-                disk->write(indirect_fb, indi_block.Data);
+                /* for (uint32_t m = 0; m < POINTERS_PER_BLOCK; m++) { */
+                /*     printf("bp 5.3\n"); */
+                /*     if (current_block == m+6) { */
+                /*         break; */
+                /*     } */
+                /* } */ 
+
+                indi_block.Pointers[current_block-INDIRECT_OFFSET] = fb;
+                disk->write(node.Indirect, indi_block.Data);
             }
-            save_inode(inumber, &node);
+            printf("bp 6\n");
+
+            /* if (read_nth_block(inumber, current_block, &block)) { */
+            /*     printf("loaded nth block after allocating\n"); */   
+            /* } */
+            /* else { */
+            /*     printf("can not find nth block after allocating\n"); */   
+            /* } */
         }
         uint32_t write_begin  = offset % Disk::BLOCK_SIZE;
+        if (current_block == begin_block) write_begin = 0;
+
         uint32_t write_length = Disk::BLOCK_SIZE - write_begin;
+        if (current_block == begin_block+num_block_write-1);
+            
 
         /* strncpy(&block.Data[write_begin], data, write_length); */
         uint32_t count_bytes = 0;
-        while (data[count_bytes] != '\0' || count_bytes == write_length) {
+        while (data[count_bytes] != '\0'   || 
+               count_bytes == write_length
+               ) {
             block.Data[write_begin++] = data[count_bytes++]; 
         }
 
         data += count_bytes; 
         write_bytes += count_bytes;
 
+        printf("bp 7\n");
         
         save_nth_block(inumber, current_block, &block);
     }
     node.Size += write_bytes;
     save_inode(inumber, &node);
+
+    printf("write_bytes %d\n", write_bytes);
+    printf("bp 8\n");
     return write_bytes;
 }
 

@@ -10,8 +10,6 @@ image-5-output() {
 
 
 
-0 disk block writes
-5 disk block reads
 965 bytes copied
 All mimsy were the borogoves,
 All mimsy were the borogoves,
@@ -218,8 +216,6 @@ image-20-output() {
 
 
 0 bytes copied
-0 disk block writes
-21 disk block reads
 27160 bytes copied
 9546 bytes copied
    Abraham Clark

@@ -35,44 +35,47 @@ private:
     	char	    Data[Disk::BLOCK_SIZE];	    // Data block
     };
 
-    // TODO: Internal helper functions
-    bool load_inode(size_t inumber, Inode *node);
-    bool save_inode(size_t inumber, Inode *node);
-    bool read_nth_block(size_t inumber, size_t nthblock, Block *block);
-    ssize_t allocate_free_block();
-    bool save_nth_block(size_t inumber, size_t nthblock, Block *block);
-    inline void set_fbmap(uint32_t b) {free_bmap[b-offset] = 1;}
+    bool    load_inode          (size_t inumber, Inode *node);
+    bool    save_inode          (size_t inumber, Inode *node);
 
-    // TODO: Internal member variables
+    /* read nth data block of a inode */
+    bool    read_nth_block      (size_t inumber, size_t nthblock, Block *block);
+    ssize_t allocate_free_block ();
+    bool    save_nth_block      (size_t inumber, size_t nthblock, Block *block);
+
+    // set b block in free block map to occupied
+    inline void set_fbmap  (uint32_t b) {free_bmap[b-offset] = 1;}
+    inline void unset_fbmap(uint32_t b) {free_bmap[b-offset] = 0;}
+
 
     // offset is the number of the non data blocks
-    uint32_t offset = 0;
+    uint32_t        offset = 0;
 
     // free block map size
-    uint32_t freebmap_size;
+    uint32_t        freebmap_size;
 
     // free block map
-    unsigned char *free_bmap;
+    unsigned char   *free_bmap;
 
     // itable size;
-    uint32_t itable_size;
+    uint32_t        itable_size;
 
     // inode table
-    unsigned char *itable; 
+    unsigned char   *itable; 
 
     // disk pointer;
     Disk *disk;
 
 public:
-    static void debug(Disk *disk);
-    static bool format(Disk *disk);
+    static void debug   (Disk *disk);
+    static bool format  (Disk *disk);
 
-    bool mount(Disk *disk);
+    bool        mount   (Disk *disk);
 
-    ssize_t create();
-    bool    remove(size_t inumber);
-    ssize_t stat(size_t inumber);
+    ssize_t     create  ();
+    bool        remove  (size_t inumber);
+    ssize_t     stat    (size_t inumber);
 
-    ssize_t read(size_t inumber, char *data, size_t length, size_t offset);
-    ssize_t write(size_t inumber, char *data, size_t length, size_t offset);
+    ssize_t     read    (size_t inumber, char *data, size_t length, size_t offset);
+    ssize_t     write   (size_t inumber, char *data, size_t length, size_t offset);
 };
