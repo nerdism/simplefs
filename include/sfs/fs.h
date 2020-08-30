@@ -35,6 +35,18 @@ private:
     	char	    Data[Disk::BLOCK_SIZE];	    // Data block
     };
 
+    #define FILE_T  0xaf
+    #define DIR_T   0x5b 
+    #define DIRENT_NAME_SIZE 32
+    
+    /* it's pointer to a inode which determines the type of the inode */
+    struct Dirent {
+        uint32_t Inode; /* inode number  */
+        uint32_t Type;  /* type of inode */
+        uint32_t Resv;  /* size of inode */
+        char Name[DIRENT_NAME_SIZE];  /* name of the item */
+    };
+
     bool    load_inode          (size_t inumber, Inode *node);
     bool    save_inode          (size_t inumber, Inode *node);
 
@@ -47,6 +59,9 @@ private:
     inline void set_fbmap  (uint32_t b) {free_bmap[b-offset] = 1;}
     inline void unset_fbmap(uint32_t b) {free_bmap[b-offset] = 0;}
 
+    bool add_new_dirent(Dirent d);
+
+    Dirent current_dir;
 
     // offset is the number of the non data blocks
     uint32_t        offset = 0;
@@ -72,10 +87,14 @@ public:
 
     bool        mount   (Disk *disk);
 
-    ssize_t     create  ();
+    ssize_t     mkfile  (const char *name);
     bool        remove  (size_t inumber);
     ssize_t     stat    (size_t inumber);
 
-    ssize_t     read    (size_t inumber, char *data, size_t length, size_t offset);
+    ssize_t     read    (size_t inumber, 
+                         char *data, 
+                         size_t length, 
+                         size_t offset);
+
     ssize_t     write   (size_t inumber, char *data, size_t length, size_t offset);
 };

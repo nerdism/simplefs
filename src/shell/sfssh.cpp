@@ -17,16 +17,17 @@
 
 // Command prototypes
 
-void do_debug(Disk &disk, FileSystem &fs, int args, char *arg1, char *arg2);
-void do_format(Disk &disk, FileSystem &fs, int args, char *arg1, char *arg2);
-void do_mount(Disk &disk, FileSystem &fs, int args, char *arg1, char *arg2);
-void do_cat(Disk &disk, FileSystem &fs, int args, char *arg1, char *arg2);
-void do_copyout(Disk &disk, FileSystem &fs, int args, char *arg1, char *arg2);
-void do_create(Disk &disk, FileSystem &fs, int args, char *arg1, char *arg2);
-void do_remove(Disk &disk, FileSystem &fs, int args, char *arg1, char *arg2);
-void do_stat(Disk &disk, FileSystem &fs, int args, char *arg1, char *arg2);
-void do_copyin(Disk &disk, FileSystem &fs, int args, char *arg1, char *arg2);
-void do_help(Disk &disk, FileSystem &fs, int args, char *arg1, char *arg2);
+void do_debug   (Disk &disk, FileSystem &fs, int args, char *arg1, char *arg2);
+void do_format  (Disk &disk, FileSystem &fs, int args, char *arg1, char *arg2);
+void do_mount   (Disk &disk, FileSystem &fs, int args, char *arg1, char *arg2);
+void do_cat     (Disk &disk, FileSystem &fs, int args, char *arg1, char *arg2);
+void do_copyout (Disk &disk, FileSystem &fs, int args, char *arg1, char *arg2);
+void do_mkfile  (Disk &disk, FileSystem &fs, int args, char *arg1, char *arg2);
+void do_mkdir  (Disk &disk, FileSystem &fs, int args, char *arg1, char *arg2);
+void do_remove  (Disk &disk, FileSystem &fs, int args, char *arg1, char *arg2);
+void do_stat    (Disk &disk, FileSystem &fs, int args, char *arg1, char *arg2);
+void do_copyin  (Disk &disk, FileSystem &fs, int args, char *arg1, char *arg2);
+void do_help    (Disk &disk, FileSystem &fs, int args, char *arg1, char *arg2);
 
 bool copyout(FileSystem &fs, size_t inumber, const char *path);
 bool copyin(FileSystem &fs, const char *path, size_t inumber);
@@ -74,8 +75,8 @@ int main(int argc, char *argv[]) {
 	    do_cat(disk, fs, args, arg1, arg2);
 	} else if (streq(cmd, "copyout")) {
 	    do_copyout(disk, fs, args, arg1, arg2);
-	} else if (streq(cmd, "create")) {
-	    do_create(disk, fs, args, arg1, arg2);
+	} else if (streq(cmd, "mkfile")) {
+	    do_mkfile(disk, fs, args, arg1, arg2);
 	} else if (streq(cmd, "remove")) {
 	    do_remove(disk, fs, args, arg1, arg2);
 	} else if (streq(cmd, "stat")) {
@@ -154,9 +155,9 @@ void do_copyout(Disk &disk, FileSystem &fs, int args, char *arg1, char *arg2) {
     }
 }
 
-void do_create(Disk &disk, FileSystem &fs, int args, char *arg1, char *arg2) {
+void do_mkfile(Disk &disk, FileSystem &fs, int args, char *arg1, char *arg2) {
     if (args != 1) {
-    	printf("Usage: create\n");
+    	printf("Usage: mkfile file_name\n");
     	return;
     }
 

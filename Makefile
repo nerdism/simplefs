@@ -27,6 +27,10 @@ $(SHELL_PROGRAM):	$(SHELL_OBJECTS) $(LIB_STATIC)
 test:	$(SHELL_PROGRAM)
 	@for test_script in tests/test_*.sh; do $${test_script}; done
 
+fs_test: tests/tdd_fs_write.cpp $(LIB_STATIC)
+	$(CXX) $(CXXFLAGS) $^ -o tests/$@
+	tests/fs_test
+
 clean:
 	rm -f $(LIB_OBJECTS) $(LIB_STATIC) $(SHELL_OBJECTS) $(SHELL_PROGRAM)
 
