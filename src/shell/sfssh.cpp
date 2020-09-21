@@ -23,7 +23,8 @@ void do_mount   (Disk &disk, FileSystem &fs, int args, char *arg1, char *arg2);
 void do_cat     (Disk &disk, FileSystem &fs, int args, char *arg1, char *arg2);
 void do_copyout (Disk &disk, FileSystem &fs, int args, char *arg1, char *arg2);
 void do_mkfile  (Disk &disk, FileSystem &fs, int args, char *arg1, char *arg2);
-void do_mkdir  (Disk &disk, FileSystem &fs, int args, char *arg1, char *arg2);
+void do_mkdir   (Disk &disk, FileSystem &fs, int args, char *arg1, char *arg2);
+void do_pwd     (Disk &disk, FileSystem &fs, int args, char *arg1, char *arg2);
 void do_remove  (Disk &disk, FileSystem &fs, int args, char *arg1, char *arg2);
 void do_stat    (Disk &disk, FileSystem &fs, int args, char *arg1, char *arg2);
 void do_copyin  (Disk &disk, FileSystem &fs, int args, char *arg1, char *arg2);
@@ -77,6 +78,12 @@ int main(int argc, char *argv[]) {
 	    do_copyout(disk, fs, args, arg1, arg2);
 	} else if (streq(cmd, "mkfile")) {
 	    do_mkfile(disk, fs, args, arg1, arg2);
+	} else if (streq(cmd, "mkdir")) {
+            do_mkdir(disk, fs, args, arg1, arg2); 
+	} else if (streq(cmd, "pwd")) {
+            do_pwd(disk, fs, args, arg1, arg2); 
+	} else if (streq(cmd, "ls")) {
+            do_mkdir(disk, fs, args, arg1, arg2); 
 	} else if (streq(cmd, "remove")) {
 	    do_remove(disk, fs, args, arg1, arg2);
 	} else if (streq(cmd, "stat")) {
@@ -161,12 +168,33 @@ void do_mkfile(Disk &disk, FileSystem &fs, int args, char *arg1, char *arg2) {
     	return;
     }
 
-    ssize_t inumber = fs.create();
-    if (inumber >= 0) {
-    	printf("created inode %ld.\n", inumber);
+    if (fs.mkfile(arg1)) {
+        printf("created the file successfully");
     } else {
-    	printf("create failed!\n");
+        printf("failed to create file");
     }
+}
+void do_mkdir(Disk &disk, FileSystem &fs, int args, char *arg1, char *arg2) {
+    if (args != 1) {
+    	printf("Usage: mkdir dir_name\n");
+    	return;
+    }
+
+    if (fs.mkdir(arg1)) {
+        printf("created the directory successfully");
+    } else {
+        printf("failed to create directory");
+    }
+}
+
+void do_pwd(Disk &disk, FileSystem &fs, int args, char *arg1, char *arg2) {
+    if (args != 0) {
+    	printf("Usage: pwd\n");
+    	return;
+    }
+
+    printf("%s", fs.get_current_dir());
+
 }
 
 void do_remove(Disk &disk, FileSystem &fs, int args, char *arg1, char *arg2) {

@@ -9,9 +9,6 @@
 #include <string.h>
 
 
-/* number of the block right after direct blocks */
-#define INDIRECT_OFFSET 6
-#define INODE_BLOCKS_OFFSET 1
 
 // Debug file system -----------------------------------------------------------
 
@@ -95,12 +92,10 @@ bool FileSystem::format(Disk *disk) {
     }
 
     // make the inode zero
-    Inode izero;
+    Inode izero = {0};
     izero.Valid = true;
-    izero.Size = 0;
-    izero.Direct = {0};
-    izero.Indirect = 0;
-    save_inode(0, &izero);
+    
+    if (!save_inode(0, &izero)) return false;
 
     return true;
 }
@@ -132,15 +127,15 @@ bool FileSystem::mount(Disk *disk) {
 
 
     // Allocate free block bitmap
-    offset = sblock.Super.InodeBlocks+1;
-    freebmap_size = sblock.Super.Blocks-offset;
-    free_bmap = new unsigned char[freebmap_size];
-    memset(free_bmap, 0, freebmap_size);
+    m_offset = sblock.Super.InodeBlocks+1;
+    m_free_bitmap_size = sblock.Super.Blocks-m_offset;
+    m_free_bitmap = new unsigned char[m_free_bitmap_size];
+    memset(m_free_bitmap, 0, m_free_bitmap_size);
 
     // Allocate inode table
-    itable_size = sblock.Super.InodeBlocks*INODES_PER_BLOCK;
-    itable = new unsigned char[itable_size];
-    memset(itable, 0, freebmap_size);
+    m_itable_size = sblock.Super.InodeBlocks*INODES_PER_BLOCK;
+    m_itable = new unsigned char[m_itable_size];
+    memset(m_itable, 0, m_free_bitmap_size);
 
     Block iblock;
     for (uint32_t i = 1; i <= sblock.Super.InodeBlocks; i++) {
@@ -148,13 +143,13 @@ bool FileSystem::mount(Disk *disk) {
         for (uint32_t j = 0; j < INODES_PER_BLOCK; j++) {
 
             if (iblock.Inodes[j].Valid) {
-                itable[(i-1)*INODES_PER_BLOCK+j] = 1; 
+                m_itable[(i-1)*INODES_PER_BLOCK+j] = 1; 
 
                 // checking 5  direct pointers
                 for (uint32_t k = 0; k < POINTERS_PER_INODE; k++) {
                     uint32_t block_ind = iblock.Inodes[j].Direct[k];
                     if (block_ind != 0) {
-                        free_bmap[block_ind-offset] = 1; 
+                        m_free_bitmap[block_ind-m_offset] = 1; 
                     } 
                 }
 
@@ -167,7 +162,7 @@ bool FileSystem::mount(Disk *disk) {
                     for (uint32_t k = 0; k < POINTERS_PER_BLOCK; k++) {
                         uint32_t block_ind = indi_block.Pointers[k];
                         if (block_ind != 0) {
-                            free_bmap[block_ind-offset] = 1; 
+                            m_free_bitmap[block_ind-m_offset] = 1; 
                         } 
                     }
                 }
@@ -189,9 +184,9 @@ bool FileSystem::mount(Disk *disk) {
     } 
 
     
-    current_dir.Inode   = 0;
-    current_dir.Type    = DIR_T;
-    strcpy(current_dir.Name, "/");
+    m_current_dir.Inode   = 0;
+    m_current_dir.Type    = static_cast<uint8_t>(DirentType::DIR_T);
+    strcpy(m_current_dir.Name, "/");
     printf("[+] root dir mounted\n");
 
     return true;
@@ -199,12 +194,28 @@ bool FileSystem::mount(Disk *disk) {
 
 // Create inode ----------------------------------------------------------------
 
-ssize_t FileSystem::mkfile(const char *name) {
+bool FileSystem::mkfile(const char *name) {
+    if (!make_file_or_dir(name, DirentType::FILE_T))
+        return false;
+    return true;
+}
+
+bool FileSystem::mkdir(const char *name) {
+    if (!make_file_or_dir(name, DirentType::DIR_T))
+        return false;
+    return true;
+}
+
+char *FileSystem::get_current_dir() {
+    return m_current_dir.Name;
+}
+
+bool FileSystem::make_file_or_dir(const char *name, DirentType type) {
     bool found = false;
     // Locate free inode in inode table
     uint32_t i;
-    for (i = 0; i < itable_size; i++) {
-        if (itable[i] == 0) {
+    for (i = 0; i < m_itable_size; i++) {
+        if (m_itable[i] == 0) {
             found = true;
             break;
         } 
@@ -212,24 +223,38 @@ ssize_t FileSystem::mkfile(const char *name) {
     if (!found) return -1;
     
     // save inode if found
-    Inode node;
-    memset(&node, 0, sizeof(node));
+    Inode node = {0};
     node.Valid = 1;
-    save_inode(i, &node);
+
+    if (!save_inode(i, &node))
+        return false;
 
     // set the inode on the inode table that exist
-    itable[i] = 1;
+    m_itable[i] = 1;
 
     // make Dirent for this inode in the current dirent 
     Dirent new_dirent;
-    new_dirent.inode = i;
-    new_dirent.Type  = FILE_T;
+    new_dirent.Inode = i;
+    if (type == DirentType::FILE_T) {
+        new_dirent.Type  = static_cast<uint8_t>(DirentType::FILE_T);
+    }
+    else if (type == DirentType::DIR_T) {
+        new_dirent.Type  = static_cast<uint8_t>(DirentType::DIR_T);
+    }
+    else 
+        return false;
+
+    new_dirent.NameLength = strnlen(name, DIRENT_NAME_SIZE);
     strncpy(new_dirent.Name, name, DIRENT_NAME_SIZE);
 
+    if (!add_new_dirent(new_dirent)) {
+
+        return false;
+    }
     // save the dirent to the current dirent
     // add_dirent
 
-    return i;
+    return true;
 }
 
 // Remove inode ----------------------------------------------------------------
@@ -247,7 +272,7 @@ bool FileSystem::remove(size_t inumber) {
     for(int i=0;i<5;i++) { 
         uint32_t t = node.Direct[i];
         if (t != 0) {
-            free_bmap[t-offset] = 0; 
+            m_free_bitmap[t-m_offset] = 0; 
         }
         node.Direct[i] = 0;
     }
@@ -260,22 +285,22 @@ bool FileSystem::remove(size_t inumber) {
         for (uint32_t i = 0; i < POINTERS_PER_BLOCK; i++) {
             uint32_t t = pblock.Pointers[i]; 
             if (t != 0) {
-                free_bmap[t-offset] = 0;
+                m_free_bitmap[t-m_offset] = 0;
                 pblock.Pointers[i] = 0;
             }
         }
         
         disk->write(node.Indirect, pblock.Data);
 
-        // free_bmap[node.Indirect-offset] = 0;
-        unset_fbmap(node.Indirect);
+        // m_free_bitmap[node.Indirect-offset] = 0;
+        unset_free_bitmap(node.Indirect);
         node.Indirect = 0;
     }
 
     node.Valid = 0;
     // Clear inode in inode table
     save_inode(inumber, &node);
-    itable[inumber] = 0;
+    m_itable[inumber] = 0;
     return true;
 }
 
@@ -296,11 +321,12 @@ ssize_t FileSystem::stat(size_t inumber) {
 
 ssize_t FileSystem::read(size_t inumber, char *data, size_t length, size_t offset) {
     /* printf("length: %ld, offset: %ld\n", length, offset); */
-    /* printf("itable: %p free_bmap: %p\n", this->itable, this->free_bmap); */
-    /* for (uint32_t i = 0; i < itable_size; i++) { */
-    /*     printf("%d", itable[i]); */ 
+    /* printf("m_itable: %p m_free_bitmap: %p\n", this->m_itable, this->m_free_bitmap); */
+    /* for (uint32_t i = 0; i < m_itable_size; i++) { */
+    // __m_itable_size
+    /*     printf("%d", m_itable[i]); */ 
     /* } */
-    if (itable[inumber] == 0) return -1;
+    if (m_itable[inumber] == 0) return -1;
 
     Inode node;
     // Load inode information
@@ -309,7 +335,7 @@ ssize_t FileSystem::read(size_t inumber, char *data, size_t length, size_t offse
     if (offset > node.Size) return 0;
 
     // the beginning block
-    uint32_t begin_block = (offset / Disk::BLOCK_SIZE) + 1;
+    uint32_t begin_block = (offset / Disk::BLOCK_SIZE);
 
     // actual length that can be read;
     uint32_t alength = node.Size - offset;
@@ -389,7 +415,7 @@ ssize_t FileSystem::write(size_t inumber, char *data,
     save_inode(inumber, &node);
     return byte_count;
     /*printf("bp 1\n");*/
-    /*if (itable[inumber] == 0) return -1;*/
+    /*if (m_itable[inumber] == 0) return -1;*/
 
     /*// Load inode*/
     /*Inode node;*/
@@ -521,8 +547,8 @@ bool FileSystem::read_nth_block(size_t inumber, size_t nthblock, Block *block) {
     Inode node;
     load_inode(inumber, &node);
 
-    if (nthblock <= 5) {
-        uint32_t t = node.Direct[nthblock-1]; 
+    if (nthblock < POINTERS_PER_INODE) {
+        uint32_t t = node.Direct[nthblock]; 
         if (t == 0) return false;
         disk->read(t, block->Data);
         return true;
@@ -536,7 +562,7 @@ bool FileSystem::read_nth_block(size_t inumber, size_t nthblock, Block *block) {
         for (uint32_t i = 0; i < POINTERS_PER_BLOCK; i++) {
             t = dblock.Pointers[i]; 
             if (t == 0) return false;
-            if (i == nthblock-6) {
+            if (i == nthblock-POINTERS_PER_INODE) {
                 disk->read(t, block->Data);    
                 break;
             }
@@ -547,10 +573,10 @@ bool FileSystem::read_nth_block(size_t inumber, size_t nthblock, Block *block) {
 }
 
 ssize_t FileSystem::allocate_free_block() {
-    for (uint32_t i = 0; i < freebmap_size; i++) {
-        if (free_bmap[i] == 0) {
-            free_bmap[i] = 1;
-            return (i+offset); 
+    for (uint32_t i = 0; i < m_free_bitmap_size; i++) {
+        if (m_free_bitmap[i] == 0) {
+            m_free_bitmap[i] = 1;
+            return (i+m_offset); 
         }
     }
     return -1;
@@ -562,7 +588,7 @@ bool FileSystem::save_nth_block(size_t inumber,
     Inode node;
     load_inode(inumber, &node);
 
-    if (nthblock <= 5) {
+    if (nthblock <= POINTERS_PER_INODE) {
         uint32_t t = node.Direct[nthblock-1]; 
         if (t == 0) return false;
         disk->write(t, block->Data);
@@ -574,8 +600,33 @@ bool FileSystem::save_nth_block(size_t inumber,
     return true;
 }
 
-bool FileSystem::add_new_dirent(Dirent d) {
+bool FileSystem::add_new_dirent(const Dirent &dirent) {
+    uint32_t inum = m_current_dir.Inode;
+    uint32_t total_inode_blocks = POINTERS_PER_INODE + POINTERS_PER_BLOCK;
+    Block block;
 
+    // iterate over the inode dirent blocks
+    for (uint32_t b = 0; b < total_inode_blocks; b++) {
+
+        if (!read_nth_block(inum, b, &block)) return false;
+
+        for (uint32_t i = 0; i < DIRENTS_PER_BLOCK; i++) {
+            uint8_t type = block.Dirents[i].Type;
+            if (type == static_cast<uint8_t>(DirentType::FILE_T) ||
+                type == static_cast<uint8_t>(DirentType::DIR_T)) {
+
+                continue;
+            } 
+                
+            block.Dirents[i].Inode = dirent.Inode;
+            block.Dirents[i].Type = dirent.Type;
+            block.Dirents[i].NameLength = dirent.NameLength;
+            strncpy(block.Dirents[i].Name, dirent.Name, DIRENT_NAME_SIZE) ;
+            save_nth_block(inum, b, &block);
+            return true;
+        }
+    }
+    return false;
 }
 
 
