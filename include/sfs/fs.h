@@ -77,18 +77,32 @@ private:
      * @Brief takes a dirent and addes it to current dirent
      *
      * @Param dirent a new dirent that we want to add to current
+     * @Param inum inumber of the directory which we want this dirent be added to
+     *
      * @Return true if successful false if failed 
      */
-    bool add_new_dirent(const Dirent& dirent);
+    bool add_new_dirent(const Dirent& dirent, uint32_t inum);
 
     /**
      * @Brief make a file or directory
      *
      * @Param name file or directory name
      * @Param type type if either FILE_T OR DIR_T
+     *
      * @Return true if successful
      */
     bool make_file_or_dir(const char *name, DirentType type);
+
+    void print_dirent(Dirent &dirent);
+
+    /**
+     * @Brief find the inumber of a file 
+     *
+     * @Param name file name
+     * @Param directory_inumber inumber of the directory
+     * @Return inumber if ound -1 if not
+     */
+    ssize_t find_inumber(char *name, size_t directory_inumber);
 
     Dirent m_current_dir;
 
@@ -107,6 +121,7 @@ private:
     // inode table
     unsigned char   *m_itable; 
 
+    bool            m_is_mounted = false;;
     // disk pointer;
     Disk *disk;
 
@@ -116,6 +131,7 @@ public:
     bool format  (Disk *disk);
 
     bool        mount   (Disk *disk);
+    bool        mounted() {return m_is_mounted;}
 
     /**
      * @Brief create a file with the given name on the 
@@ -134,14 +150,21 @@ public:
      * @return true if successful false if fail
      */
     bool        mkdir   (const char *name);
+
+    /**
+     * @Brief list file and directories in the current dir
+     */
+    void        list();
+
+    bool        change_directory(char *name);
+
     char        *get_current_dir();
     bool        remove  (size_t inumber);
     ssize_t     stat    (size_t inumber);
 
     ssize_t     read    (size_t inumber, 
                          char *data, 
-                         size_t length, 
-                         size_t offset);
+                         size_t length); 
 
-    ssize_t     write   (size_t inumber, char *data, size_t length, size_t offset);
+    ssize_t     write   (size_t inumber, char *data, size_t length);
 };

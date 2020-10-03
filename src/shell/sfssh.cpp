@@ -22,9 +22,11 @@ void do_format  (Disk &disk, FileSystem &fs, int args, char *arg1, char *arg2);
 void do_mount   (Disk &disk, FileSystem &fs, int args, char *arg1, char *arg2);
 void do_cat     (Disk &disk, FileSystem &fs, int args, char *arg1, char *arg2);
 void do_copyout (Disk &disk, FileSystem &fs, int args, char *arg1, char *arg2);
+void do_list    (Disk &disk, FileSystem &fs, int args, char *arg1, char *arg2);
 void do_mkfile  (Disk &disk, FileSystem &fs, int args, char *arg1, char *arg2);
 void do_mkdir   (Disk &disk, FileSystem &fs, int args, char *arg1, char *arg2);
 void do_pwd     (Disk &disk, FileSystem &fs, int args, char *arg1, char *arg2);
+void do_cd     (Disk &disk, FileSystem &fs, int args, char *arg1, char *arg2);
 void do_remove  (Disk &disk, FileSystem &fs, int args, char *arg1, char *arg2);
 void do_stat    (Disk &disk, FileSystem &fs, int args, char *arg1, char *arg2);
 void do_copyin  (Disk &disk, FileSystem &fs, int args, char *arg1, char *arg2);
@@ -82,8 +84,10 @@ int main(int argc, char *argv[]) {
             do_mkdir(disk, fs, args, arg1, arg2); 
 	} else if (streq(cmd, "pwd")) {
             do_pwd(disk, fs, args, arg1, arg2); 
+	} else if (streq(cmd, "cd")) {
+            do_cd(disk, fs, args, arg1, arg2); 
 	} else if (streq(cmd, "ls")) {
-            do_mkdir(disk, fs, args, arg1, arg2); 
+            do_list(disk, fs, args, arg1, arg2); 
 	} else if (streq(cmd, "remove")) {
 	    do_remove(disk, fs, args, arg1, arg2);
 	} else if (streq(cmd, "stat")) {
@@ -163,37 +167,59 @@ void do_copyout(Disk &disk, FileSystem &fs, int args, char *arg1, char *arg2) {
 }
 
 void do_mkfile(Disk &disk, FileSystem &fs, int args, char *arg1, char *arg2) {
-    if (args != 1) {
+    if (args != 2) {
     	printf("Usage: mkfile file_name\n");
     	return;
     }
 
     if (fs.mkfile(arg1)) {
-        printf("created the file successfully");
+        printf("created the file successfully\n");
     } else {
-        printf("failed to create file");
+        printf("failed to create file\n");
     }
 }
 void do_mkdir(Disk &disk, FileSystem &fs, int args, char *arg1, char *arg2) {
-    if (args != 1) {
+    if (args != 2) {
     	printf("Usage: mkdir dir_name\n");
     	return;
     }
 
     if (fs.mkdir(arg1)) {
-        printf("created the directory successfully");
+        printf("created the directory successfully\n");
     } else {
-        printf("failed to create directory");
+        printf("failed to create directory\n");
     }
 }
 
 void do_pwd(Disk &disk, FileSystem &fs, int args, char *arg1, char *arg2) {
-    if (args != 0) {
+    if (args != 1) {
     	printf("Usage: pwd\n");
     	return;
     }
 
-    printf("%s", fs.get_current_dir());
+    printf("%s\n", fs.get_current_dir());
+
+}
+
+void do_list(Disk &disk, FileSystem &fs, int args, char *arg1, char *arg2) {
+    if (args != 1) {
+    	printf("usage: ls\n");
+    	return;
+    }
+
+    fs.list();
+
+}
+
+void do_cd(Disk &disk, FileSystem &fs, int args, char *arg1, char *arg2) {
+    if (args != 2) {
+    	printf("usage: cd directory_name\n");
+    	return;
+    }
+
+    if (!fs.change_directory(arg1)) {
+        printf("unable to change directory\n"); 
+    }
 
 }
 
@@ -228,11 +254,11 @@ void do_stat(Disk &disk, FileSystem &fs, int args, char *arg1, char *arg2) {
 
 void do_copyin(Disk &disk, FileSystem &fs, int args, char *arg1, char *arg2) {
     if (args != 3) {
-    	printf("Usage: copyin <inode> <file>\n");
+        printf("    copyin  <src_file> <dst_simplefs_file>\n");
     	return;
     }
 
-    if (!copyin(fs, arg1, atoi(arg2))) {
+    if (!copyin(fs, arg1, arg2)) {
     	printf("copyin failed!\n");
     }
 }
@@ -244,9 +270,13 @@ void do_help(Disk &disk, FileSystem &fs, int args, char *arg1, char *arg2) {
     printf("    debug\n");
     printf("    create\n");
     printf("    remove  <inode>\n");
+    printf("    mkfile <<F12>jjj>\n");
+    printf("    ls\n");
+    printf("    pwd\n");
+    printf("    cd      <dir_name>\n");
     printf("    cat     <inode>\n");
     printf("    stat    <inode>\n");
-    printf("    copyin  <file> <inode>\n");
+    printf("    copyin  <src_file> <dst_simplefs_file>\n");
     printf("    copyout <inode> <file>\n");
     printf("    help\n");
     printf("    quit\n");
@@ -284,28 +314,17 @@ bool copyin(FileSystem &fs, const char *path, size_t inumber) {
     	return false;
     }
 
-    char buffer[4*BUFSIZ] = {0};
-    size_t offset = 0;
-    while (true) {
-    	ssize_t result = fread(buffer, 1, sizeof(buffer), stream);
-    	if (result <= 0) {
-    	    break;
-	}
+    char buffer[1024*1024*10] = {0};
 
-	ssize_t actual = fs.write(inumber, buffer, result, offset);
-        printf("here mohsen\n");
-	if (actual < 0) {
-	    fprintf(stderr, "fs.write returned invalid result %ld\n", actual);
-	    break;
-	}
-	offset += actual;
-	if (actual != result) {
-	    fprintf(stderr, "fs.write only wrote %ld bytes, not %ld bytes\n", actual, result);
-	    break;
-	}
+    ssize_t result = fread(buffer, 1, sizeof(buffer), stream);
+
+    if (result <= 0) {
+        return false;
     }
 
-    printf("%lu bytes copied\n", offset);
+    ssize_t actual = fs.write(inumber, buffer, result);
+
+    printf("%lu bytes copied\n", actual);
     fclose(stream);
     return true;
 }
