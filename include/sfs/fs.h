@@ -89,9 +89,9 @@ private:
      * @Param name file or directory name
      * @Param type type if either FILE_T OR DIR_T
      *
-     * @Return true if successful
+     * @Return inode number
      */
-    bool make_file_or_dir(const char *name, DirentType type);
+    ssize_t make_file_or_dir(const char *name, DirentType type);
 
     void print_dirent(Dirent &dirent);
 
@@ -140,7 +140,7 @@ public:
      * @Param name of the file
      * @return true if successful false if fail
      */
-    bool        mkfile  (const char *name);
+    ssize_t mkfile  (const char *name);
 
     /**
      * @Brief create a directory with the given name on the 
@@ -149,7 +149,7 @@ public:
      * @Param  name of the directory
      * @return true if successful false if fail
      */
-    bool        mkdir   (const char *name);
+    ssize_t mkdir   (const char *name);
 
     /**
      * @Brief list file and directories in the current dir
